@@ -26,6 +26,8 @@ Likewise, each of the other objects like the UserAccessControl, Key, File, Invit
 
 One of the main challenges this system faces is appending and updating files. In order to prevent having to decrypt and encrypt whole files when a small amount of data is appended to a file, we separate files into Block objects, and link them together similar to a reversed linked list, whereby the File object does not store the data in the file, but instead only a pointer to the last Block object (which will ensure efficiency assuming this is system is more write-heavy than read-heavy).
 
+### Overall System Diagram
+
 <img alt="System Diagram" src="https://user-images.githubusercontent.com/8297863/211121746-47da363f-0b4b-40cd-bfc2-631d46cb9073.png">
 
 ## User Authentication - Relevant Client API Methods: InitUser, GetUser
