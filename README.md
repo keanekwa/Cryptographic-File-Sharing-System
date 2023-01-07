@@ -9,7 +9,22 @@ There are two important adversaries who threaten our system: the datastore adver
 
 - Revoked User Adversary: after a user is granted access to a file, they are counted as a trusted party. However, after their access is revoked, we have to ensure that they do not know any information about the files or any future updates at all (e.g. revoked user should not even know if the length of the file changed, if the number of users with access to the file changed, etc).
 
-## System Diagram
+## System Design
+
+### Design for Security
+
+The main idea behind our design is that each user will have a few keys:
+- UserKey: PBKDF-based unique key which allows them to access their UserAccessControl object
+- UserPubKey & UserSecKey: 256-byte RSA key pair for public-key encryption
+- UserDSSignKey & UserDSVerifyKey: 256-byte RSA key pair for digital signatures
+
+These keys are the core of our design, whereby the UserKey allows the user to access the UserAccessControl object, which is an encrypted object which allows the user to view/manage file access permissions and perform CRUD operations on the files. The other 4 keys (UserPubKey, UserSecKey, UserDSSignKey, and UserDSVerifyKey) work together to allow users to securely send and accept invitations for file access.
+
+Likewise, each of the other objects like the UserAccessControl, Key, File, Invitation, and Block objects will each also have their own PBKDF-based unique key which allows them to access the other objects linked to them.
+
+### Design for Efficiency
+
+One of the main challenges this system faces is appending and updating files. In order to prevent having to decrypt and encrypt whole files when a small amount of data is appended to a file, we separate files into Block objects, and link them together similar to a reversed linked list, whereby the File object does not store the data in the file, but instead only a pointer to the last Block object (which will ensure efficiency assuming this is system is more write-heavy than read-heavy).
 
 <img alt="System Diagram" src="https://user-images.githubusercontent.com/8297863/211121746-47da363f-0b4b-40cd-bfc2-631d46cb9073.png">
 
@@ -73,6 +88,17 @@ This function returns the fileUUID given a User and a filename.
 
 #### func stringInSlice(a string, list []string) bool
 This function checks if a string exists in a list of strings, which will be especially useful in checking for permissions (e.g. for file sharing).
+
+## Appendix 2: UUIDs & Encryption Methods
+
+| UUID | Encrypted | Key Derivation | Value at UUID | Description/Relationship |
+| --- | --- | --- | --- | --- |
+| userUUID = uuid.fromBytes(userlib.Hash(json.Marshal(username))[:16]) | Yes | userKey = Argon2Key(json.Marshal(password), json.Marshal(username), 64)[:16] | Symmetric, deterministic key | User struct, encrypted with encryptMAC(json.Marshal(userdata), userKey) | Stores userKey for user authentication, userPubKey & userSecKey for RSA, userDSVerifyKey & userDSSignKey for DS, userAccessControlUUID to check for user access, and several maps including FileKeyStructUUIDMap, InvitationUUIDMap, etc for file sharing. |
+|  userAccessControlUUID = uuid.New() | Yes | Use the same userKey in the User Struct | UserAccessControl struct, encrypted with encryptMAC(json.Marshal(userAccessControldata), userKey) | Stores fileMap and keyUUIDMap, which maps fileNames to fileUUIDs and fileUUIDs to fileKeys respectively. |
+| keyUUID = uuid.New() | Yes | keyStructKey = Symmetric, randomly-generated key | Key struct, encrypted with encryptMAC(json.Marshal(fileKey), keyStructKey) | Stores the FileKey and FileUUID.
+| fileUUID = uuid.New() | Yes | fileKey = Symmetric, randomly-generated key | File struct, encrypted with encryptMAC(json.Marshal(filedata), fileKey) | Stores the TailBlockUUID which links to the last appended Block, and BlockKey to unlock the Blocks of the File.
+| blockUUID = uuid.New() | Yes | blockKey = Symmetric, randomly-generated key | Block struct, encrypted with encryptMAC(block, blockKey) | Stores a singular Block. |
+| invitationUUID = uuid.New() | Yes | Generate 2 asymmetric keys for RSA with PKEKeyGen() and 2 asymmetric keys for DS with DSKeyGen() | Invitation struct, encrypted with RSA with the file owner’s private key, and digitally signed by the file owner’s secret key | Stores the Invitation with RSA + DS. Ensures integrity and authenticity. |
 
 ## Acknowledgements
 
